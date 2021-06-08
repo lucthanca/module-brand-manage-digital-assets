@@ -101,6 +101,7 @@ class DigitalAssetsProcessor
     public function process(
         $product
     ) {
+        return;
         try {
             if (!$product instanceof ProductInterface) {
                 $product = $this->productRepository->getById($product);
@@ -262,7 +263,7 @@ class DigitalAssetsProcessor
 
         if ($needSaveProduct) {
             $product->setExtensionAttributes($extension);
-            vadu_log(['save' => 'updateDownloadAssetsFiles']);
+            // vadu_log(['save' => 'updateDownloadAssetsFiles']);
             $this->productRepository->save($product);
         }
     }
@@ -506,7 +507,7 @@ class DigitalAssetsProcessor
         if ($entryChanged) {
             $product->setMediaGalleryEntries($galleryEntries);
             try {
-                vadu_log(['save' => 'moveImagesToBrandDir']);
+//                vadu_log(['save' => 'moveImagesToBrandDir']);
                 $this->productRepository->save($product);
             } catch (Exception $e) {
                 $this->logger->critical(

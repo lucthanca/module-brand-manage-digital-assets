@@ -5,4 +5,9 @@
                type="Bss\DigitalAssetsManage\Plugin\Controller\Adminhtml\Product\Initialization\MoveDownloadableLinksToBrand"
                sortOrder="90" />
    </type>
+
+    <preference for="Magento\Downloadable\Helper\File"
+                type="Bss\DigitalAssetsManage\Helper\Downloadable\File"/>
+    <preference for="Magento\Downloadable\Controller\Adminhtml\Product\Initialization\Helper\Plugin\Downloadable"
+                type="Bss\DigitalAssetsManage\Controller\Adminhtml\Product\Initialization\Helper\Plugin\Downloadable"/>
 </config>

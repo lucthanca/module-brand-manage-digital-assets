@@ -6,6 +6,11 @@
         </arguments>
     </type>
 
+    <type name="Magento\Catalog\Model\Product\TypeTransitionManager">
+        <plugin name="Bss_DigitalAssetsManage::remove_all_assets_if_not_downladable_more"
+                type="Bss\DigitalAssetsManage\Plugin\Model\Product\TypeTransitionManagerPlugin"
+                sortOrder="90" />
+    </type>
 <!--    <preference for="Magento\Catalog\Model\Product\Gallery\Processor"-->
 <!--                type="Bss\DigitalAssetsManage\Model\Product\Gallery\Processor" />-->
 </config>

@@ -90,17 +90,18 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
         return;
         /** @var Category $category */
         $category = $observer->getData('category');
-        $brandPath = $this->getBrandDirectory->getBrandPathWithCategory($category);
-
-        if (!$brandPath) {
-            return;
-        }
+//        $brandPath = $this->getBrandDirectory->getBrandPathWithCategory($category);
+//
+//        if (!$brandPath) {
+//            return;
+//        }
 
         $products = $category->getPostedProducts();
         $oldProducts = $category->getProductsPosition();
         $insert = array_diff_key($products, $oldProducts);
         $delete = array_diff_key($oldProducts, $products);
 
+        dd(['insert' => $insert, 'delete' => $delete]);
         foreach (array_keys($insert) as $pId) {
             $this->assetsProcessor->process($pId);
         }
