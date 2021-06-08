@@ -39,6 +39,7 @@ class MoveDownloadableLinksToBrand
         \Magento\Catalog\Controller\Adminhtml\Product\Initialization\Helper $subject,
         \Magento\Catalog\Model\Product $product
     ) {
+        return $product;
         if ($product->getTypeId() === 'downloadable') {
             $this->digitalAssetsProcessor->moveDownloadableAssetsToBrandDir($product);
         }

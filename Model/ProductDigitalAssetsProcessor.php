@@ -356,7 +356,7 @@ class ProductDigitalAssetsProcessor
         foreach ($samples as $link) {
             if ($sampleFile = $link->getSampleFile()) {
                 if ($backToDispersionPath) {
-                    $brandPath = DS . $this->getDispersionPath($link->getSampleFile()) . DS;
+                    $brandPath = DIRECTORY_SEPARATOR . $this->getDispersionPath($link->getSampleFile()) . DIRECTORY_SEPARATOR;
                 }
                 $newSampleFile = $this->getNewBrandFilePath(
                     $this->getSample()->getBasePath(),
@@ -397,7 +397,7 @@ class ProductDigitalAssetsProcessor
         foreach ($links as $link) {
             if ($linkFile = $link->getLinkFile()) {
                 if ($backToDispersionPath) {
-                    $brandPath = DS . $this->getDispersionPath($link->getLinkFile()) . DS;
+                    $brandPath = DIRECTORY_SEPARATOR . $this->getDispersionPath($link->getLinkFile()) . DIRECTORY_SEPARATOR;
                 }
                 $newLinkFile = $this->getNewBrandFilePath(
                     $this->getLink()->getBasePath(),
@@ -412,7 +412,7 @@ class ProductDigitalAssetsProcessor
 
             if ($sampleFile = $link->getSampleFile()) {
                 if ($backToDispersionPath) {
-                    $brandPath = DS . $this->getDispersionPath($link->getSampleFile()) . DS;
+                    $brandPath = DIRECTORY_SEPARATOR . $this->getDispersionPath($link->getSampleFile()) . DIRECTORY_SEPARATOR;
                 }
                 $newSampleFile = $this->getNewBrandFilePath(
                     $this->getLink()->getBaseSamplePath(),
@@ -441,9 +441,9 @@ class ProductDigitalAssetsProcessor
         $pathinfo = pathinfo($file);
         $fileName = $pathinfo['basename'];
         $dispersionPath = Uploader::getDispersionPath($fileName);
-        $dispersionPath = ltrim($dispersionPath, DS);
+        $dispersionPath = ltrim($dispersionPath, DIRECTORY_SEPARATOR);
 
-        return rtrim($dispersionPath, DS);
+        return rtrim($dispersionPath, DIRECTORY_SEPARATOR);
     }
 
     /**
@@ -680,7 +680,7 @@ class ProductDigitalAssetsProcessor
                     $dispersionPath = $this->getDispersionPath($entry->getFile());
 
                     $this->moveFileInCatalogProductFolder(
-                        DS . $dispersionPath . DS,
+                        DIRECTORY_SEPARATOR . $dispersionPath . DIRECTORY_SEPARATOR,
                         $entry,
                         $product,
                         $entryChanged
@@ -735,7 +735,7 @@ class ProductDigitalAssetsProcessor
             $this->mediaDirectory->delete(
                 $this->getFilePath(
                     $this->mediaConfig->getBaseMediaPath(),
-                    DS . $this->getFilePath(
+                    DIRECTORY_SEPARATOR . $this->getFilePath(
                         'tmp',
                         $brandDir
                     )
@@ -802,7 +802,7 @@ class ProductDigitalAssetsProcessor
     protected function moveToBrandDir(string $basePath, string $brandPath, string $file, bool $toTmp = false): string
     {
         if ($toTmp) {
-            $brandPath = DS . $this->getFilePath(
+            $brandPath = DIRECTORY_SEPARATOR . $this->getFilePath(
                 'tmp',
                 $brandPath
             );
@@ -815,7 +815,7 @@ class ProductDigitalAssetsProcessor
         }
 
         // Get final brand digital assets destination file path
-        $destFile = $brandPath . DS . $this->getUniqueFileNameInBrandDigitalFolder(
+        $destFile = $brandPath . DIRECTORY_SEPARATOR . $this->getUniqueFileNameInBrandDigitalFolder(
             $pathInfo['basename'],
             $basePath . $brandPath
         );
@@ -884,6 +884,6 @@ class ProductDigitalAssetsProcessor
         $path = rtrim($path, '/');
         $file = ltrim($file, '/');
 
-        return $path . DS . $file;
+        return $path . DIRECTORY_SEPARATOR . $file;
     }
 }

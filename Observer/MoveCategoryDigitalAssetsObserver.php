@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Bss\DigitalAssetsManage\Observer;
 
 use Bss\DigitalAssetsManage\Helper\GetBrandDirectory;
+use Bss\DigitalAssetsManage\Model\DigitalAssetsProcessor;
 use Bss\DigitalAssetsManage\Model\ProductDigitalAssetsProcessor;
 use Magento\Catalog\Api\CategoryRepositoryInterface;
 use Magento\Catalog\Model\Category;
@@ -47,6 +48,11 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
     protected $digitalAssetsProcessor;
 
     /**
+     * @var DigitalAssetsProcessor
+     */
+    protected $assetsProcessor;
+
+    /**
      * MoveCategoryDigitalAssetsObserver constructor.
      *
      * @param LoggerInterface $logger
@@ -54,6 +60,7 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
      * @param CategoryRepositoryInterface $categoryRepository
      * @param GetBrandDirectory $getBrandDirectory
      * @param ProductDigitalAssetsProcessor $digitalAssetsProcessor
+     * @param DigitalAssetsProcessor $assetsProcessor
      * @param ImageUploader|null $imageUploader
      */
     public function __construct(
@@ -62,6 +69,7 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
         CategoryRepositoryInterface $categoryRepository,
         GetBrandDirectory $getBrandDirectory,
         ProductDigitalAssetsProcessor $digitalAssetsProcessor,
+        DigitalAssetsProcessor $assetsProcessor,
         ImageUploader $imageUploader = null
     ) {
         $this->filesystem = $filesystem;
@@ -71,6 +79,7 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
         $this->logger = $logger;
         $this->getBrandDirectory = $getBrandDirectory;
         $this->digitalAssetsProcessor = $digitalAssetsProcessor;
+        $this->assetsProcessor = $assetsProcessor;
     }
 
     /**
@@ -78,6 +87,7 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
      */
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
+        return;
         /** @var Category $category */
         $category = $observer->getData('category');
         $brandPath = $this->getBrandDirectory->getBrandPathWithCategory($category);
@@ -91,6 +101,13 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
         $insert = array_diff_key($products, $oldProducts);
         $delete = array_diff_key($oldProducts, $products);
 
+        foreach (array_keys($insert) as $pId) {
+            $this->assetsProcessor->process($pId);
+        }
+        foreach (array_keys($delete) as $pId) {
+            $this->assetsProcessor->process($pId);
+        }
+        return;
         try {
             foreach (array_keys($insert) as $pId) {
                 $this->digitalAssetsProcessor->moveAssetsToBrandFolder((int) $pId, $brandPath);

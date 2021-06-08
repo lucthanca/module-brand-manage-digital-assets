@@ -18,20 +18,28 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
     protected $categoryCollectionFactory;
 
     /**
+     * @var GetBrandDirectory
+     */
+    protected $getBrandDirectory;
+
+    /**
      * Grid constructor.
      *
      * @param \Magento\Backend\Block\Template\Context $context
      * @param \Magento\Backend\Helper\Data $backendHelper
      * @param \Magento\Catalog\Model\ResourceModel\Category\CollectionFactory $categoryCollectionFactory
+     * @param GetBrandDirectory $getBrandDirectory
      * @param array $data
      */
     public function __construct(
         \Magento\Backend\Block\Template\Context $context,
         \Magento\Backend\Helper\Data $backendHelper,
         \Magento\Catalog\Model\ResourceModel\Category\CollectionFactory $categoryCollectionFactory,
+        GetBrandDirectory $getBrandDirectory,
         array $data = []
     ) {
         $this->categoryCollectionFactory = $categoryCollectionFactory;
+        $this->getBrandDirectory = $getBrandDirectory;
         parent::__construct($context, $backendHelper, $data);
     }
 
@@ -130,7 +138,7 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
             if ($category instanceof \Magento\Catalog\Model\Category) {
                 $size = $this->folderSize(
                     $this->getMediaDirectory()->getAbsolutePath(),
-                    $category->getName()
+                    $this->getBrandDirectory->escapeBrandName($category->getName())
                 );
                 $i = 1;
                 while ($size > 1024) {
@@ -191,7 +199,7 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
      */
     protected function getDigitalAssetsPath(string $brandName): string
     {
-        return $brandName . DS . GetBrandDirectory::DIGITAL_ASSETS_FOLDER_NAME;
+        return $brandName . DIRECTORY_SEPARATOR . GetBrandDirectory::DIGITAL_ASSETS_FOLDER_NAME;
     }
 
     /**

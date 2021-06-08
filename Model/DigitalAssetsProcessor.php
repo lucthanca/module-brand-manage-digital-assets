@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Bss\DigitalAssetsManage\Model;
 
+use Bss\DigitalAssetsManage\Helper\DownloadableHelper;
 use Bss\DigitalAssetsManage\Helper\GetBrandDirectory;
 use Magento\Catalog\Api\ProductRepositoryInterface;
 use Magento\Catalog\Model\Product;
@@ -10,13 +11,18 @@ use Magento\Catalog\Api\Data\ProductInterface;
 use Exception;
 use \Magento\Catalog\Api\Data\ProductAttributeMediaGalleryEntryInterface;
 use Magento\Catalog\Model\Product\Media\Config as MediaConfig;
+use Magento\Downloadable\Api\Data\LinkInterface;
+use Magento\Downloadable\Api\Data\SampleInterface;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\ResourceConnection;
+use Magento\Framework\Exception\CouldNotSaveException;
 use Magento\Framework\Exception\FileSystemException;
-use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Exception\InputException;
+use Magento\Framework\Exception\StateException;
 use Magento\Framework\Filesystem;
 use Magento\Framework\Filesystem\Directory\WriteInterface;
 use Magento\MediaStorage\Model\File\Uploader;
+use \Magento\Downloadable\Model\Product\Type as DownloadableType;
 
 /**
  * Processing digital assets
@@ -55,6 +61,11 @@ class DigitalAssetsProcessor
     protected $mediaDirectory;
 
     /**
+     * @var DownloadableHelper
+     */
+    protected $downloadableHelper;
+
+    /**
      * DigitalAssetsProcessor constructor.
      *
      * @param \Psr\Log\LoggerInterface $logger
@@ -63,6 +74,7 @@ class DigitalAssetsProcessor
      * @param ResourceConnection $resourceConnection
      * @param MediaConfig $mediaConfig
      * @param Filesystem $filesystem
+     * @param DownloadableHelper $downloadableHelper
      * @throws FileSystemException
      */
     public function __construct(
@@ -71,7 +83,8 @@ class DigitalAssetsProcessor
         GetBrandDirectory $getBrandDirectory,
         ResourceConnection $resourceConnection,
         MediaConfig $mediaConfig,
-        Filesystem $filesystem
+        Filesystem $filesystem,
+        DownloadableHelper $downloadableHelper
     ) {
         $this->logger = $logger;
         $this->productRepository = $productRepository;
@@ -79,6 +92,7 @@ class DigitalAssetsProcessor
         $this->resourceConnection = $resourceConnection;
         $this->mediaConfig = $mediaConfig;
         $this->mediaDirectory = $filesystem->getDirectoryWrite(DirectoryList::MEDIA);
+        $this->downloadableHelper = $downloadableHelper;
     }
 
     /**
@@ -110,16 +124,332 @@ class DigitalAssetsProcessor
      */
     public function processDownloadableAssets(ProductInterface $product)
     {
-        if ($this->removeDownloadableAssetsFromBrandDir($product)) {
+        if ($this->deleteAll($product)) {
             return;
         }
 
-        $this->moveDownloadableAssetsToBrandDir($product);
+        $this->updateDownloadAssetsFiles($product);
     }
 
-    public function removeDownloadableAssetsFromBrandDir(ProductInterface $product)
+    /**
+     * Delete all assets in brand dir if the product is not downloadable
+     *
+     * @param ProductInterface $product
+     * @return bool
+     */
+    public function deleteAll(ProductInterface $product): bool
     {
-        $needToRemove = $this->isNeedToMove($product, $brandPath);
+        if ($product->getTypeId() !== DownloadableType::TYPE_DOWNLOADABLE &&
+            $product->getOrigData("type_id") === DownloadableType::TYPE_DOWNLOADABLE
+        ) {
+            $brandPath = $this->getBrandDirectory->execute($product, true);
+            $modifiedLinks = [];
+            $extension = $product->getExtensionAttributes();
+            $links = $extension->getDownloadableProductLinks();
+            $samples = $extension->getDownloadableProductSamples();
+            $this->getAllLinks($modifiedLinks, $links, $brandPath, "remove");
+            $this->getAllLinks($modifiedLinks, $samples , $brandPath, "remove");
+
+            {
+                $this->deleteLinks($modifiedLinks['remove'] ?? []);
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Move file to brand dir if available
+     *
+     * @param ProductInterface $product
+     * @throws FileSystemException
+     * @throws CouldNotSaveException
+     * @throws InputException
+     * @throws StateException
+     */
+    public function updateDownloadAssetsFiles(ProductInterface $product)
+    {
+        $brandPath = $this->getBrandDirectory->execute($product);
+
+        if (!$brandPath) {
+            return;
+        }
+
+        $extension = $product->getExtensionAttributes();
+        $links = $extension->getDownloadableProductLinks();
+        $samples = $extension->getDownloadableProductSamples();
+        $oldLinks = $product->getOrigData("downloadable_links");
+        $oldSamples = $product->getOrigData("downloadable_samples");
+        if (is_object($oldSamples)) {
+            $oldSamples = $oldSamples->getItems();
+        }
+        if (is_object($oldLinks)) {
+            $oldLinks = $oldLinks->getItems();
+        }
+        $modifiedLinks = [];
+        $this->getDifferenceLinks($modifiedLinks, $links, $oldLinks, $brandPath);
+        $this->getDifferenceLinks($modifiedLinks, $samples, $oldSamples, $brandPath);
+
+        $mappingPath = [
+            'samples' => $this->downloadableHelper->getSample()->getBasePath(),
+            'link_samples' => $this->downloadableHelper->getLink()->getBaseSamplePath(),
+            'links' => $this->downloadableHelper->getLink()->getBasePath()
+        ];
+
+        $linksChanged = 0;
+        $samplesChanged = 0;
+        foreach ($mappingPath as $linkType => $basePath) {
+            // update new path for links
+            foreach ($links as $link) {
+                if ($linkPath = $link->getData('modify_' . $linkType)) {
+                    $newPath = $this->moveFile(
+                        $basePath,
+                        $brandPath,
+                        $linkPath
+                    );
+                    if ($linkType === "links") {
+                        $link->setLinkFile($newPath);
+                    }
+
+                    if ($linkType === "link_samples") {
+                        $link->setSampleFile($newPath);
+                    }
+
+                    $link->setData('modify_' . $linkType, null);
+                    $linksChanged++;
+                }
+            }
+            // update new path for samples
+            foreach ($samples as $link) {
+                if ($linkPath = $link->getData('modify_' . $linkType)) {
+                    $newPath = $this->moveFile(
+                        $basePath,
+                        $brandPath,
+                        $linkPath
+                    );
+
+                    if ($linkType === "samples") {
+                        $link->setSampleFile($newPath);
+                    }
+
+                    $link->setData('modify_' . $linkType, null);
+                    $linksChanged++;
+                }
+            }
+
+            //remove old file from the brand directory
+            if (isset($modifiedLinks['remove'][$linkType])) {
+                foreach ($modifiedLinks['remove'][$linkType] as $deleteLink) {
+                    $this->mediaDirectory->delete(
+                        $this->getFilePath($basePath, $deleteLink)
+                    );
+                }
+            }
+        }
+
+        $needSaveProduct = false;
+        if ($linksChanged) {
+            $extension->setDownloadableProductLinks($links);
+            $needSaveProduct = true;
+        }
+
+        if ($samplesChanged) {
+            $extension->setDownloadableProductSamples($samples);
+            $needSaveProduct = true;
+        }
+
+        if ($needSaveProduct) {
+            $product->setExtensionAttributes($extension);
+            vadu_log(['save' => 'updateDownloadAssetsFiles']);
+            $this->productRepository->save($product);
+        }
+    }
+
+    private function deleteLinks(array $links)
+    {
+        $mappingPath = [
+            'samples' => $this->downloadableHelper->getSample()->getBasePath(),
+            'link_samples' => $this->downloadableHelper->getLink()->getBaseSamplePath(),
+            'links' => $this->downloadableHelper->getLink()->getBasePath()
+        ];
+
+        foreach ($mappingPath as $linkType => $basePath) {
+            if (isset($links[$linkType])) {
+                foreach ($links[$linkType] as $deleteLink) {
+                    $this->mediaDirectory->delete(
+                        $this->getFilePath($basePath, $deleteLink)
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Get all links and add to modified links
+     *
+     * @param array $modifiedLinks
+     * @param array|null $links
+     * @param string|null $include - if path include this
+     * @param string $method
+     */
+    protected function getAllLinks(array &$modifiedLinks, ?array $links, ?string $include, string $method = "update")
+    {
+        if (!$links) {
+            return;
+        }
+
+        foreach ($links as $link) {
+            if ($linkFile = $link->getLinkFile()) {
+                if ($include === null) {
+                    $modifiedLinks[$method]["links"][] = $linkFile;
+                } elseif (strpos($linkFile, $include) !== false) { // if include the path
+                    $modifiedLinks[$method]["links"][] = $linkFile;
+                }
+            }
+            $linkType = $link instanceof SampleInterface ? "samples" : "link_samples";
+            if ($sampleFile = $link->getSampleFile()) {
+                if ($include === null) {
+                    $modifiedLinks[$method][$linkType][] = $sampleFile;
+                } elseif (strpos($linkFile, $include) !== false) { // if include the path
+                    $modifiedLinks[$method][$linkType][] = $sampleFile;
+                }
+            }
+        }
+    }
+
+    /**
+     * get differnce links for update, need update to brand dir, need remove from brand dir
+     *
+     * @param array $modifiedLinks
+     * @param LinkInterface[]|SampleInterface[] $links
+     * @param LinkInterface[]|SampleInterface[] $originLinks
+     * @param string $brandPath
+     * @return array
+     */
+    protected function getDifferenceLinks(array &$modifiedLinks, ?array &$links, ?array $originLinks, string $brandPath): array
+    {
+        if ($links === null) {
+            $links = [];
+        }
+
+        if ($originLinks === null) {
+            $originLinks = [];
+        }
+
+        foreach ($links as $link) {
+            // If new link be added, add to the modifiedLinks and go next turn
+            if (!$link->getId()) {
+                if ($link->getLinkFile() && !$link->getData("is_set_modify_links")) {
+                    $modifiedLinks['update']['links'][] = $link->getLinkFile();
+                    $link->setData("modify_links" , $link->getLinkFile());
+                    // Set is_set_modify_ to defined the new assets was be added
+                    // and next save process will skip this
+                    $link->setData("is_set_modify_links", true);
+                }
+                if ($link->getSampleFile()) {
+                    $linkType = $link instanceof LinkInterface ? "link_samples" : "samples";
+                    if (!$link->getData("is_set_modify_$linkType")) {
+                        $modifiedLinks['update'][$linkType][] = $link->getSampleFile();
+                        $link->setData("modify_" . $linkType , $link->getSampleFile());
+                        $link->setData("is_set_modify_$linkType", true);
+                    }
+                }
+                continue;
+            }
+
+            foreach ($originLinks as $originLink) {
+                if ($link->getId() !== $originLink->getId()) {
+                    continue;
+                }
+                $this->getModifiedLinkFile($modifiedLinks, $link, $originLink, $brandPath, "getLinkFile", "links");
+                $linkType = $link instanceof LinkInterface && $originLink instanceof LinkInterface ? "link_samples" : "samples";
+                $this->getModifiedLinkFile($modifiedLinks, $link, $originLink, $brandPath, "getSampleFile", $linkType);
+            }
+        }
+
+
+        // make flat links ids for check removed link
+        $flatLinkIds = [];
+        foreach ($links as $link) {
+            $flatLinkIds[] = (int) $link->getId();
+        }
+
+        // get removed links
+        foreach ($originLinks as $link) {
+            if (!in_array((int) $link->getId(), $flatLinkIds)) {
+                if ($link->getSampleFile()) {
+                    $linkType = $link instanceof LinkInterface ? "link_samples" : "samples";
+                    $modifiedLinks['remove'][$linkType][] = $link->getSampleFile();
+                }
+
+                if ($link->getLinkFile()) {
+                    $modifiedLinks['remove']["links"][] = $link->getLinkFile();
+                }
+            }
+        }
+
+        return $modifiedLinks;
+    }
+
+    /**
+     * @param array $modifiedLinks
+     * @param LinkInterface|SampleInterface $link
+     * @param LinkInterface|SampleInterface $originLink
+     * @param string $brandPath
+     * @param string $func
+     * @param string $linkType
+     */
+    private function getModifiedLinkFile(array &$modifiedLinks, $link, $originLink, string $brandPath, string $func, string $linkType)
+    {
+        if (!$link->$func() && !$originLink->$func()) {
+            return;
+        }
+
+        if ($this->compareTwoLinks($link->$func(), $originLink->$func())) {
+            // If not in brand dir
+            if ($link->$func() && strpos($link->$func(), $brandPath) === false) {
+                $modifiedLinks['update'][$linkType][] = $link->$func();
+                $link->setData("modify_" . $linkType, $link->$func());
+            }
+            return;
+        }
+
+        // If not in brand dir
+        if ($link->$func() && strpos($link->$func(), $brandPath) === false) {
+            $modifiedLinks['update'][$linkType][] = $link->$func();
+            $link->setData("modify_" . $linkType, $link->$func());
+        }
+
+        // remove on file in brand dir for not affect to old product
+        if ($originLink->$func() && strpos($originLink->$func(), $brandPath) !== false) {
+            $modifiedLinks['remove'][$linkType][] = $originLink->$func();
+        }
+    }
+
+    /**
+     * Compare two link
+     *
+     * @param string|null $link
+     * @param string|null $oriLink
+     * @return bool
+     */
+    private function compareTwoLinks(?string $link, ?string $oriLink): bool
+    {
+        if ($link === null) {
+            $link = "";
+        }
+
+        if ($oriLink === null) {
+            $oriLink = "";
+        }
+
+        $link = str_replace("/", "", str_replace("\\", "", $link));
+        $oriLink = str_replace("/", "", str_replace("\\", "", $oriLink));
+
+
+        return $link === $oriLink;
     }
 
     /**
@@ -176,6 +506,7 @@ class DigitalAssetsProcessor
         if ($entryChanged) {
             $product->setMediaGalleryEntries($galleryEntries);
             try {
+                vadu_log(['save' => 'moveImagesToBrandDir']);
                 $this->productRepository->save($product);
             } catch (Exception $e) {
                 $this->logger->critical(
@@ -206,6 +537,7 @@ class DigitalAssetsProcessor
                 $product->setMediaGalleryEntries($galleryEntries);
                 try {
                     $this->productRepository->save($product);
+                    $needToRemove = $entryChanged;
                 } catch (Exception $e) {
                     $this->logger->critical(
                         "BSS.ERROR: Save product when remove from brand directory. " . $e
@@ -330,7 +662,7 @@ class DigitalAssetsProcessor
         bool $toTmp = false
     ): string {
         if ($toTmp) {
-            $subPath = DS . $this->getFilePath(
+            $subPath = DIRECTORY_SEPARATOR . $this->getFilePath(
                 'tmp',
                 $subPath
             );
@@ -343,7 +675,7 @@ class DigitalAssetsProcessor
         }
 
         // Get final brand digital assets destination file path
-        $destFile = $subPath . DS . $this->getUniqueFileNameInBrandDigitalFolder(
+        $destFile = $subPath . DIRECTORY_SEPARATOR . $this->getUniqueFileNameInBrandDigitalFolder(
             $pathInfo['basename'],
             $basePath . $subPath
         );
@@ -373,7 +705,7 @@ class DigitalAssetsProcessor
         $path = rtrim($path, '/');
         $file = ltrim($file, '/');
 
-        return $path . DS . $file;
+        return $path . DIRECTORY_SEPARATOR . $file;
     }
 
     /**
@@ -450,9 +782,9 @@ class DigitalAssetsProcessor
         $pathinfo = pathinfo($file);
         $fileName = $pathinfo['basename'];
         $dispersionPath = Uploader::getDispersionPath($fileName);
-        $dispersionPath = ltrim($dispersionPath, DS);
+        $dispersionPath = ltrim($dispersionPath, DIRECTORY_SEPARATOR);
 
-        return rtrim($dispersionPath, DS);
+        return rtrim($dispersionPath, DIRECTORY_SEPARATOR);
     }
 
     /**
