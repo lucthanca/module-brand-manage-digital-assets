@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
+    <router id="admin"> <!-- standard or admin -->
+        <route id="bss_digitalassets" frontName="bss_digitalassets">
+            <module name="Bss_DigitalAssetsManage" />
+        </route>
+    </router>
+</config>

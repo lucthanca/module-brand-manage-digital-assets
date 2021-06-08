@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Bss_DigitalAssetsManage::storage_report"
+             title="Digital Assets Brand Storage Report"
+             module="Bss_DigitalAssetsManage"
+             sortOrder="1800"
+             parent="Magento_Reports::report_salesroot"
+             action="bss_digitalassets/report/"
+             resource="Bss_DigitalAssetsManage::digital_assets_report" />
+    </menu>
+</config>
