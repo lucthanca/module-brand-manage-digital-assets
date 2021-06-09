@@ -8,6 +8,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Class TypeTransitionManagerPlugin
+ * Delete all link file if not downloadable product
  */
 class TypeTransitionManagerPlugin
 {

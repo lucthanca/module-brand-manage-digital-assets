@@ -35,7 +35,6 @@ class ProductDigitalAssetsMovingObserver implements \Magento\Framework\Event\Obs
             return;
         }
 
-        vadu_log(['is' => $product->getData("is_modify_images")]);
         $this->digitalAssetsProcessor->processImageAssets($product, null, null, true);
     }
 }
