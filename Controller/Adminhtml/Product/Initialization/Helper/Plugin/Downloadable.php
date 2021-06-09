@@ -92,6 +92,99 @@ class Downloadable extends ParentClass
     ) {
         $brandPath = $this->getBrandDirectory->execute($product);
         if (!$brandPath) {
+            $oldBrand = $this->getBrandDirectory->execute($product, true);
+
+            if ($oldBrand) {
+                if ($downloadable = $this->request->getPost('downloadable')) {
+                    $product->setTypeId(Type::TYPE_DOWNLOADABLE);
+                    $product->setDownloadableData($downloadable);
+                    $extension = $product->getExtensionAttributes();
+                    $productLinks = $product->getTypeInstance()->getLinks($product);
+                    $productSamples = $product->getTypeInstance()->getSamples($product);
+                    $flatIds = [];
+                    if (isset($downloadable['link']) && is_array($downloadable['link'])) {
+                        $links = [];
+                        // Still exist links
+                        foreach ($downloadable['link'] as $linkData) {
+                            if (isset($linkData['link_id']) && $linkData['link_id']) {
+                                $flatIds[] = $linkData['link_id'];
+                            }
+
+                            if (!$linkData || (isset($linkData['is_delete']) && $linkData['is_delete'])) {
+                                if (isset($linkData['file']['0']['file']) && $linkData['file']['0']['file']) {
+                                    $this->downloadableHelper->deleteFile(
+                                        $this->downloadableHelper->getFilePath(
+                                            $this->downloadableHelper->getSample()->getBasePath(),
+                                            $linkData['file']['0']['file']
+                                        )
+                                    );
+                                }
+                                if (isset($linkData['file']['0']['sample']) && $linkData['file']['0']['sample']) {
+                                    $this->downloadableHelper->deleteFile(
+                                        $this->downloadableHelper->getFilePath(
+                                            $this->downloadableHelper->getSample()->getBaseSamplePath(),
+                                            $linkData['file']['0']['sample']
+                                        )
+                                    );
+                                }
+                            } else {
+                                $linkData = $this->processLink($linkData, $productLinks, $oldBrand, true);
+
+                                $links[] = $this->linkBuilder->setData(
+                                    $linkData
+                                )->build(
+                                    $this->linkFactory->create()
+                                );
+                            }
+                        }
+
+                        $extension->setDownloadableProductLinks($links);
+                    } else {
+                        $extension->setDownloadableProductLinks([]);
+                    }
+
+                    $this->downloadableHelper->deleteLink($productLinks, $flatIds);
+                    $flatIds = [];
+                    if (isset($downloadable['sample']) && is_array($downloadable['sample'])) {
+                        $samples = [];
+                        foreach ($downloadable['sample'] as $sampleData) {
+                            if (isset($sampleData['sample_id']) && $sampleData['sample_id']) {
+                                $flatIds[] = $sampleData['sample_id'];
+                            }
+                            if (!$sampleData || (isset($sampleData['is_delete']) && (bool)$sampleData['is_delete'])) {
+                                if (isset($linkData['file']['0']['file']) && $linkData['file']['0']['file']) {
+                                    $this->downloadableHelper->deleteFile(
+                                        $this->downloadableHelper->getFilePath(
+                                            $this->downloadableHelper->getSample()->getBasePath(),
+                                            $linkData['file']['0']['file']
+                                        )
+                                    );
+                                }
+                            } else {
+                                $sampleData = $this->processSample($sampleData, $productSamples, $oldBrand, true);
+                                $samples[] = $this->sampleBuilder->setData(
+                                    $sampleData
+                                )->build(
+                                    $this->sampleFactory->create()
+                                );
+                            }
+                        }
+                        $extension->setDownloadableProductSamples($samples);
+                    } else {
+                        $extension->setDownloadableProductSamples([]);
+                    }
+
+                    $this->downloadableHelper->deleteLink($productSamples->getItems(), $flatIds);
+                    $product->setExtensionAttributes($extension);
+                    if ($product->getLinksPurchasedSeparately()) {
+                        $product->setTypeHasRequiredOptions(true)->setRequiredOptions(true);
+                    } else {
+                        $product->setTypeHasRequiredOptions(false)->setRequiredOptions(false);
+                    }
+                }
+                return $product;
+            }
+
             return parent::afterInitialize($subject, $product);
         }
         if ($downloadable = $this->request->getPost('downloadable')) {
@@ -192,9 +285,10 @@ class Downloadable extends ParentClass
      * @param array $linkData
      * @param array $productLinks
      * @param string $brandPath
+     * @param bool $toDispersionPath
      * @return array
      */
-    private function processLink(array $linkData, array $productLinks, string $brandPath): array
+    private function processLink(array $linkData, array $productLinks, string $brandPath, bool $toDispersionPath = false): array
     {
         $linkId = $linkData['link_id'] ?? null;
 
@@ -207,11 +301,17 @@ class Downloadable extends ParentClass
             );
 
             // check and set brand path for next processing
-            $linkData = $this->processBrandAssetsStatus($linkData, $productLinks[$linkId]->getLinkFile(), $brandPath);
+            $linkData = $this->processBrandAssetsStatus(
+                $linkData,
+                $productLinks[$linkId]->getLinkFile(),
+                $brandPath,
+                $toDispersionPath
+            );
             $linkData['sample'] = $this->processBrandAssetsStatus(
                 $linkData['sample'] ?? [],
                 $productLinks[$linkId]->getSampleFile(),
-                $brandPath
+                $brandPath,
+                $toDispersionPath
             );
         } else {
             // Nếu là thêm mới
@@ -219,8 +319,8 @@ class Downloadable extends ParentClass
             $linkData['sample'] = $this->processFileStatus($linkData['sample'] ?? [], null);
 
             // check and set brand path for next processing
-            $linkData = $this->processBrandAssetsStatus($linkData, null, $brandPath);
-            $linkData['sample'] = $this->processBrandAssetsStatus($linkData['sample'] ?? [], null, $brandPath);
+            $linkData = $this->processBrandAssetsStatus($linkData, null, $brandPath, $toDispersionPath);
+            $linkData['sample'] = $this->processBrandAssetsStatus($linkData['sample'] ?? [], null, $brandPath, $toDispersionPath);
         }
 
         return $linkData;
@@ -232,9 +332,10 @@ class Downloadable extends ParentClass
      * @param array $linkData
      * @param string|null $file
      * @param string $brandPath
+     * @param bool $toDispersionPath
      * @return array
      */
-    private function processBrandAssetsStatus(array $linkData, ?string $file, string $brandPath): array
+    private function processBrandAssetsStatus(array $linkData, ?string $file, string $brandPath, bool $toDispersionPath = false): array
     {
         if (isset($linkData['type']) &&
             $linkData['type'] === Download::LINK_TYPE_FILE &&
@@ -252,11 +353,51 @@ class Downloadable extends ParentClass
                 } elseif ($file) {
                     $linkData['file'][0]['to_be_remove'] = $file;
                 }
-                $linkData['file'][0]['brand_path'] = $brandPath;
+                if (!$toDispersionPath) {
+                    $linkData['file'][0]['brand_path'] = $brandPath;
+                }
+            }
+
+            if ($toDispersionPath && $linkData['file'][0]['status'] === 'old') {
+                $linkData['file'][0]['move_from_base_path'] = true;
+                $dispersionPath = $this->downloadableHelper->getFileHelper()->getDispersionPath($linkData['file'][0]['file']);
+                $linkData['file'][0]['brand_path'] = $dispersionPath;
             }
         }
 
         return $linkData;
+    }
+
+    /**
+     * Check Sample type and status.
+     *
+     * @param array $sampleData
+     * @param Collection $productSamples
+     * @param string $brandPath
+     * @param bool $toDispersionPath
+     * @return array
+     */
+    private function processSample(array $sampleData, Collection $productSamples, string $brandPath, bool $toDispersionPath = false): array
+    {
+        $sampleId = $sampleData['sample_id'] ?? null;
+        /** @var \Magento\Downloadable\Model\Sample $productSample */
+        $productSample = $sampleId ? $productSamples->getItemById($sampleId) : null;
+
+        // đã tồn tại
+        if ($sampleId && $productSample) {
+            $sampleData = $this->processFileStatus($sampleData, $productSample->getSampleFile());
+
+            // check and set brand path for next processing
+            $sampleData = $this->processBrandAssetsStatus($sampleData, $productSample->getSampleFile(), $brandPath, $toDispersionPath);
+        } else {
+            // thêm mới
+            $sampleData = $this->processFileStatus($sampleData, null);
+
+            // check and set brand path for next processing
+            $sampleData = $this->processBrandAssetsStatus($sampleData, null, $brandPath, $toDispersionPath);
+        }
+
+        return $sampleData;
     }
 
     /**
@@ -281,37 +422,6 @@ class Downloadable extends ParentClass
 
 
         return $link === $oriLink;
-    }
-
-    /**
-     * Check Sample type and status.
-     *
-     * @param array $sampleData
-     * @param Collection $productSamples
-     * @param string $brandPath
-     * @return array
-     */
-    private function processSample(array $sampleData, Collection $productSamples, string $brandPath): array
-    {
-        $sampleId = $sampleData['sample_id'] ?? null;
-        /** @var \Magento\Downloadable\Model\Sample $productSample */
-        $productSample = $sampleId ? $productSamples->getItemById($sampleId) : null;
-
-        // đã tồn tại
-        if ($sampleId && $productSample) {
-            $sampleData = $this->processFileStatus($sampleData, $productSample->getSampleFile());
-
-            // check and set brand path for next processing
-            $sampleData = $this->processBrandAssetsStatus($sampleData, $productSample->getSampleFile(), $brandPath);
-        } else {
-            // thêm mới
-            $sampleData = $this->processFileStatus($sampleData, null);
-
-            // check and set brand path for next processing
-            $sampleData = $this->processBrandAssetsStatus($sampleData, null, $brandPath);
-        }
-
-        return $sampleData;
     }
 
     /**

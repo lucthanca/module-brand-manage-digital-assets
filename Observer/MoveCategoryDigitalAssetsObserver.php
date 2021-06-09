@@ -87,26 +87,28 @@ class MoveCategoryDigitalAssetsObserver implements \Magento\Framework\Event\Obse
      */
     public function execute(\Magento\Framework\Event\Observer $observer)
     {
-        return;
         /** @var Category $category */
         $category = $observer->getData('category');
-//        $brandPath = $this->getBrandDirectory->getBrandPathWithCategory($category);
-//
-//        if (!$brandPath) {
-//            return;
-//        }
+        $brandPath = $this->getBrandDirectory->getBrandPathWithCategory($category);
+
+        if (!$brandPath) {
+            return;
+        }
 
         $products = $category->getPostedProducts();
         $oldProducts = $category->getProductsPosition();
         $insert = array_diff_key($products, $oldProducts);
         $delete = array_diff_key($oldProducts, $products);
 
-        dd(['insert' => $insert, 'delete' => $delete]);
         foreach (array_keys($insert) as $pId) {
-            $this->assetsProcessor->process($pId);
+             $this->assetsProcessor->processImageAssets($pId, null, "move");
+             $this->assetsProcessor->processDownloadableAssets($pId, null, "move");
+//            $this->assetsProcessor->process($pId, $brandPath);
         }
         foreach (array_keys($delete) as $pId) {
-            $this->assetsProcessor->process($pId);
+             $this->assetsProcessor->processImageAssets($pId, $brandPath, "remove");
+             $this->assetsProcessor->processDownloadableAssets($pId, $brandPath, "remove");
+//            $this->assetsProcessor->process($pId, $brandPath);
         }
         return;
         try {

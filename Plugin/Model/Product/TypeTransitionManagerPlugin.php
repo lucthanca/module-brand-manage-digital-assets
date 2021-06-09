@@ -39,7 +39,7 @@ class TypeTransitionManagerPlugin
      * Change product type to downloadable if needed
      *
      * @param \Magento\Catalog\Model\Product\TypeTransitionManager $subject
-     * @param Closure $proceed
+     * @param callable $proceed
      * @param \Magento\Catalog\Model\Product $product
      * @return void
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)

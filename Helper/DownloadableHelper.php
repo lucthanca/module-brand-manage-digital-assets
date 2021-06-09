@@ -144,4 +144,14 @@ class DownloadableHelper
     {
         return $this->downloadableFile->getFilePath($path, $file);
     }
+
+    /**
+     * Get file helper objecty
+     *
+     * @return Downloadable\File
+     */
+    public function getFileHelper(): Downloadable\File
+    {
+        return $this->downloadableFile;
+    }
 }

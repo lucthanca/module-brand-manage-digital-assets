@@ -108,4 +108,21 @@ class File extends \Magento\Downloadable\Helper\File
     {
         $this->_mediaDirectory->delete($path);
     }
+
+    /**
+     * Get dispersion path of file
+     *
+     * @param string $file
+     * @return string
+     */
+    public function getDispersionPath(string $file): string
+    {
+        // phpcs:disable Magento2.Functions.DiscouragedFunction
+        $pathinfo = pathinfo($file);
+        $fileName = $pathinfo['basename'];
+        $dispersionPath = Uploader::getDispersionPath($fileName);
+        $dispersionPath = ltrim($dispersionPath, DIRECTORY_SEPARATOR);
+
+        return DIRECTORY_SEPARATOR . rtrim($dispersionPath, DIRECTORY_SEPARATOR);
+    }
 }

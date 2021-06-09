@@ -5,7 +5,7 @@
 <!--                  instance="Bss\DigitalAssetsManage\Observer\MoveProductImageToBrandObserver"/>-->
 <!--    </event>-->
 
-    <event name="catalog_product_save_after">
+    <event name="catalog_product_save_before">
         <observer name="move_digital_assets_to_brand_dir"
                   instance="Bss\DigitalAssetsManage\Observer\ProductDigitalAssetsMovingObserver"/>
     </event>
